@@ -19,6 +19,7 @@ from sellerops.telemetry import (
     build_db,
     table_counts,
 )
+from sellerops.text2sql import _TEMPLATES as T2S_TEMPLATES
 from sellerops.text2sql import EscalationNeeded
 from sellerops.text2sql import answer as t2s_answer
 from sellerops.views import GatewayError, install_views, run_query
@@ -369,10 +370,9 @@ def test_review_policy_violations_go_through_the_gateway():
 
 
 def test_review_simplified_retry_on_gateway_error(monkeypatch):
-    import sellerops.text2sql as t2s
-    monkeypatch.setitem(t2s._TEMPLATES, "dispute_backlog",
+    monkeypatch.setitem(T2S_TEMPLATES, "dispute_backlog",
                         "SELECT nope FROM v_dispute_backlog")  # invalid column
-    out = t2s.answer(conn(), "show the dispute backlog")
+    out = t2s_answer(conn(), "show the dispute backlog")
     assert out["sql"] == "SELECT * FROM v_dispute_backlog LIMIT 20" and out["row_count"] > 0
 
 
