@@ -1,5 +1,4 @@
 """Tests for the marketplace seller-ops scaffold. All deterministic."""
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -11,11 +10,17 @@ from sellerops.escalation import ConfirmationGate, tier_for
 from sellerops.feedback import FeedbackError, FeedbackStore, scrub_pii
 from sellerops.fraudsignal import FakeFraudFeed, LiveFraudFeed
 from sellerops.orchestrator import Orchestrator
-from sellerops.sop_rag import SopIndex, answer as rag_answer, load_chunks
-from sellerops.telemetry import (ANCHOR_ESCALATE_DISPUTE,
-                                 ANCHOR_REFUND_DISPUTE, ANCHOR_SUSPENDED_SELLER,
-                                 build_db, table_counts)
-from sellerops.text2sql import EscalationNeeded, answer as t2s_answer
+from sellerops.sop_rag import SopIndex, load_chunks
+from sellerops.sop_rag import answer as rag_answer
+from sellerops.telemetry import (
+    ANCHOR_ESCALATE_DISPUTE,
+    ANCHOR_REFUND_DISPUTE,
+    ANCHOR_SUSPENDED_SELLER,
+    build_db,
+    table_counts,
+)
+from sellerops.text2sql import EscalationNeeded
+from sellerops.text2sql import answer as t2s_answer
 from sellerops.views import GatewayError, install_views, run_query
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -301,8 +306,8 @@ def test_feedback_up_ok_and_audited():
 def test_orchestrator_fans_out():
     orch = Orchestrator(sop_dir=SOP_DIR)
     r = orch.ask("show dispute backlog and seller performance")
-    tools = [s["tool"] for s in r["steps"]]
-    assert len(r["steps"]) >= 2 and audit_ok(orch)
+    intents = [s.get("intent") for s in r["steps"]]
+    assert intents[:2] == ["dispute_backlog", "seller_performance"] and audit_ok(orch)
 
 
 def audit_ok(orch: Orchestrator) -> bool:
@@ -353,3 +358,53 @@ def test_demo_seller_health_sorted():
     rates = [r["defect_rate"] for r in rows]
     assert rates == sorted(rates, reverse=True)
     assert rows[0]["seller_id"] == ANCHOR_SUSPENDED_SELLER
+
+
+# ---------- review fixes (grokbot-portfolio, 2026-10-18) ----------
+
+def test_review_policy_violations_go_through_the_gateway():
+    c = conn()
+    out = t2s_answer(c, "list policy violations")
+    assert "FROM v_policy_violations" in out["sql"] and out["row_count"] == 3
+
+
+def test_review_simplified_retry_on_gateway_error(monkeypatch):
+    import sellerops.text2sql as t2s
+    monkeypatch.setitem(t2s._TEMPLATES, "dispute_backlog",
+                        "SELECT nope FROM v_dispute_backlog")  # invalid column
+    out = t2s.answer(conn(), "show the dispute backlog")
+    assert out["sql"] == "SELECT * FROM v_dispute_backlog LIMIT 20" and out["row_count"] > 0
+
+
+GOOD_DESC = "Set of four enamel camp plates, assorted colors, dishwasher safe."
+
+
+def test_review_prohibited_phrases_zero_compliance():
+    r = qm.score_listing("L", "Cheapest enamel plates - best deal, buy now", GOOD_DESC, True, "", 24.0)
+    assert r.breakdown()["compliance"] == 0.0 and "best deal" in r.signals[3].detail
+
+
+def test_review_function_words_are_not_keyword_stuffing():
+    r = qm.score_listing("L", "Enamel camp plate set for camping and picnic, four for families",
+                         GOOD_DESC, True, "", 24.0)
+    assert r.breakdown()["title"] == 25.0
+
+
+def test_review_real_stuffing_still_caught():
+    r = qm.score_listing("L", "mug mug mug coffee mug ceramic", GOOD_DESC, True, "", 9.0)
+    assert r.signals[0].detail.startswith("keyword stuffing")
+
+
+def test_review_all_caps_title_penalised():
+    r = qm.score_listing("L", "ENAMEL CAMP PLATES SET OF FOUR", GOOD_DESC, True, "", 24.0)
+    assert r.signals[0].detail == "all caps (SOP-01)" and r.breakdown()["title"] == 10.0
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("call (555) 123-4567 now", "call [phone] now"),     # used to swallow the space
+    ("call +1 (555) 123-4567 now", "call [phone] now"),
+    ("order ORD-20261018-0001", "order ORD-20261018-0001"),   # used to become ORD-20[phone]
+    ("ref 1234567890123", "ref 1234567890123"),
+])
+def test_review_phone_pattern_is_anchored(text, expected):
+    assert scrub_pii(text)[0] == expected

@@ -10,7 +10,7 @@ flowchart TB
     end
 
     subgraph Spine["FDE spine"]
-        VIEWS["4 read-only views\n+ SELECT-only gateway\n(SEC-SELECT-01/02/03)"]
+        VIEWS["5 read-only views\n+ SELECT-only gateway\n(SEC-SELECT-01/02/03)\n+ SQLite authorizer"]
         T2S["text2sql\n5 intents + retry"]
         RAG["TF-IDF SOP RAG\n4 SOPs, cited"]
         Q["listing-quality scorer\n5 signals, bands"]
