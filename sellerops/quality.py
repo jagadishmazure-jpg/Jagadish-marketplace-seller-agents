@@ -12,7 +12,11 @@ from dataclasses import dataclass, field
 TITLE_MIN, TITLE_MAX = 20, 140
 DESC_MIN = 40
 
-PROHIBITED_PHRASES = ("best deal", "buy now", "cheapest", "!!!", "free money")
+PROHIBITED_PHRASES = ("best deal", "buy now", "cheapest", "free money")
+# Function words do not count toward keyword stuffing ("set of four for
+# camping and picnic, set for families" repeats "for", which is not stuffing).
+_STOPWORDS = {"a", "an", "and", "the", "of", "for", "with", "to", "in", "on",
+              "or", "by", "at", "from", "&", "-", "+", "x"}
 
 
 @dataclass
@@ -38,8 +42,12 @@ def _title_score(title: str) -> SignalScore:
     low = title.lower()
     if any(p in low for p in ("!!!",)):
         return SignalScore("title", 0.0, 25.0, "excessive punctuation")
-    words = title.split()
-    repeats = len(words) - len({w.lower() for w in words})
+    letters = [c for c in title if c.isalpha()]
+    if len(letters) >= 8 and all(c.isupper() for c in letters):
+        return SignalScore("title", 10.0, 25.0, "all caps (SOP-01)")
+    words = [w.strip(",.;:!?()").lower() for w in title.split()]
+    words = [w for w in words if w and w not in _STOPWORDS]
+    repeats = len(words) - len(set(words))
     if repeats >= 2:
         return SignalScore("title", 5.0, 25.0, f"keyword stuffing ({repeats} repeats)")
     n = len(title)
@@ -66,8 +74,14 @@ def _image_score(has_image: bool) -> SignalScore:
     )
 
 
-def _compliance_score(flags: str) -> SignalScore:
+def _compliance_score(flags: str, text: str = "") -> SignalScore:
     items = [f for f in (flags or "").split(",") if f]
+    low = text.lower()
+    phrases = [p for p in PROHIBITED_PHRASES if p in low]
+    if phrases:
+        # SOP-01: pressure-tactic claims are prohibited and scored zero on
+        # compliance, whether or not the catalogue has flagged them yet.
+        items += [f"prohibited phrase '{p}'" for p in phrases if f"prohibited phrase '{p}'" not in items]
     if not items:
         return SignalScore("compliance", 20.0, 20.0, "clean")
     return SignalScore("compliance", 0.0, 20.0, f"flags: {', '.join(items)}")
@@ -89,7 +103,7 @@ def score_listing(listing_id: str, title: str, description: str,
         _title_score(title),
         _description_score(description),
         _image_score(bool(has_image)),
-        _compliance_score(compliance_flags),
+        _compliance_score(compliance_flags, title + " " + description),
         _pricing_score(price),
     ]
     total = round(sum(s.points for s in signals), 1)

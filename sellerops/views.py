@@ -2,15 +2,23 @@
 
 Rule IDs (cited in audit + errors):
   SEC-SELECT-01 — only a single SELECT statement is allowed.
-  SEC-SELECT-02 — no stacked statements, comments, or DDL/DML keywords
-                  outside string literals.
-  SEC-SELECT-03 — queries may only touch the four published views.
+  SEC-SELECT-02 — no stacked statements or DDL/DML keywords outside string
+                  literals.
+  SEC-SELECT-03 — queries may only touch the published views. Enforced by a
+                  SQLite authorizer (sellerops/authz.py, ADR 0001), so comma
+                  joins, quoted names and comments cannot reach base tables
+                  or sqlite_master.
+  At most 100 rows are fetched, whatever LIMIT the caller wrote.
 """
 
 from __future__ import annotations
 
 import re
 import sqlite3
+
+from . import authz
+
+MAX_LIMIT = 100
 
 VIEWS = {
     "v_listing_quality": """
@@ -41,6 +49,11 @@ VIEWS = {
         FROM disputes d JOIN orders o ON o.order_id = d.order_id
         WHERE d.status = 'open' AND d.reason_code IN ('not_received', 'damaged')
         GROUP BY o.seller_id
+    """,
+    "v_policy_violations": """
+        CREATE VIEW v_policy_violations AS
+        SELECT violation_id, seller_id, policy_code, severity
+        FROM violations
     """,
 }
 
@@ -80,11 +93,20 @@ def run_query(conn: sqlite3.Connection, sql: str, limit: int = 100) -> list[dict
     if unknown:
         raise GatewayError("SEC-SELECT-03",
                            f"unknown views: {sorted(unknown)}")
-    if not re.search(r"(?i)\blimit\b", text):
+    limit = min(limit, MAX_LIMIT)
+    if not re.search(r"(?i)\blimit\b", _strip_literals(text)):
         text = f"{text} LIMIT {limit}"
     conn.row_factory = sqlite3.Row
-    try:
-        rows = conn.execute(text).fetchall()
-    except sqlite3.Error as exc:
-        raise GatewayError("SEC-SELECT-01", f"query failed: {exc}") from exc
+    # SEC-SELECT-03 backstop: SQLite itself refuses any read that is not a listed view
+    # (comma joins, quoted names and comments defeat text scanning).
+    with authz.views_only(conn, VIEWS) as denied:
+        try:
+            cur = conn.execute(text)
+        except sqlite3.Error as exc:
+            if denied:
+                raise GatewayError(
+                    "SEC-SELECT-03", f"'{denied[0]}' is not one of the published views") from None
+            raise GatewayError("SEC-SELECT-01", f"query failed: {exc}") from exc
+        # A caller-written LIMIT can exceed the cap; extra rows are never fetched.
+        rows = cur.fetchmany(limit)
     return [dict(r) for r in rows]

@@ -4,7 +4,7 @@ For teams adopting this pattern in a real marketplace.
 
 ## 1. Replace the telemetry layer
 Swap `telemetry.py`'s seeded SQLite for your warehouse (Snowflake,
-BigQuery, Postgres). Keep the four read-only views as the agent's only
+BigQuery, Postgres). Keep the five read-only views as the agent's only
 interface — the gateway rules (SEC-SELECT-01/02/03) transfer unchanged.
 
 ## 2. Calibrate the quality scorer

@@ -24,11 +24,11 @@ _SELLERS = [
     # (seller_id, name, tier, rating, defect_rate)
     ("SELLER-PLAT-01", "CopperCanyon Traders", "platinum", 4.9, 0.004),
     ("SELLER-GOLD-01", "MapleRun Goods", "gold", 4.7, 0.012),
-    ("SELLER-GOLD-02", "SilverPeak Outfitters", "gold", 4.6, 0.015),
+    ("SELLER-GOLD-02", "SlateHollow Outfitters", "gold", 4.6, 0.015),
     ("SELLER-SILV-01", "RedwoodBasin Supply", "silver", 4.3, 0.031),
     ("SELLER-SILV-02", "IronHill Mercantile", "silver", 4.2, 0.038),
     ("SELLER-BRON-01", "DustyTrail Bargains", "bronze", 3.8, 0.062),
-    (ANCHOR_SUSPENDED_SELLER, "QuickFlip Liquidators", "bronze", 3.1, 0.118),
+    (ANCHOR_SUSPENDED_SELLER, "Vexmoor Clearance", "bronze", 3.1, 0.118),
 ]
 
 # (listing_id, seller_id, title, description, has_image, compliance_flags, price)

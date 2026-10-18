@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 try:
     import streamlit as st
 except ImportError:  # pragma: no cover
-    raise SystemExit("pip install streamlit, then: streamlit run demo/app.py")
+    raise SystemExit("pip install streamlit, then: streamlit run demo/app.py") from None
 
 from sellerops.demo_helpers import (  # noqa: E402
     dispute_triage_demo,

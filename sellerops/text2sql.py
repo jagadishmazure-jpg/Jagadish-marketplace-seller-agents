@@ -1,7 +1,8 @@
-"""Deterministic text-to-SQL over the four read-only views.
+"""Deterministic text-to-SQL over the five read-only views.
 
-Five intents with fixed SQL templates. One simplified retry on gateway or
-DB errors; if the retry also fails, raise EscalationNeeded — never guess.
+Five intents with fixed SQL templates, all run through the gateway. One
+simplified retry (``SELECT * FROM <view> LIMIT 20``) on gateway or DB errors;
+if the retry also fails, raise EscalationNeeded — never guess.
 """
 
 from __future__ import annotations
@@ -33,17 +34,13 @@ _TEMPLATES = {
         "FROM v_seller_performance ORDER BY defect_rate DESC"
     ),
     "policy_violations": (
-        "SELECT violation_id, seller_id, policy_code, severity FROM violations"
+        "SELECT violation_id, seller_id, policy_code, severity FROM v_policy_violations"
     ),
     "refund_exposure": (
         "SELECT seller_id, pending_refund_total, open_dispute_count "
         "FROM v_refund_exposure ORDER BY pending_refund_total DESC"
     ),
 }
-
-# policy_violations intentionally reads the base table (small, static);
-# the gateway allows it via an explicit carve-out below.
-
 
 class EscalationNeeded(Exception):
     pass
@@ -79,12 +76,12 @@ def answer(conn: sqlite3.Connection, question: str) -> dict:
         raise EscalationNeeded(f"no intent matched: {question!r}")
     sql = _TEMPLATES[intent]
     try:
-        if intent == "policy_violations":
-            # Carve-out: tiny static table, read directly (still SELECT-only).
-            conn.row_factory = sqlite3.Row
-            rows = [dict(r) for r in conn.execute(sql + " LIMIT 100")]
-        else:
+        rows = run_query(conn, sql)
+    except (GatewayError, sqlite3.Error):
+        view = re.search(r"\bFROM\s+(v_\w+)", sql).group(1)
+        sql = f"SELECT * FROM {view} LIMIT 20"  # one simplified retry
+        try:
             rows = run_query(conn, sql)
-    except (GatewayError, sqlite3.Error) as exc:
-        raise EscalationNeeded(f"query failed after retry: {exc}") from exc
+        except (GatewayError, sqlite3.Error) as exc:
+            raise EscalationNeeded(f"query failed after retry: {exc}") from exc
     return {"intent": intent, "sql": sql, "rows": rows, "row_count": len(rows)}

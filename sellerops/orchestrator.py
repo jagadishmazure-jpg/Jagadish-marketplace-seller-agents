@@ -15,9 +15,11 @@ from . import quality as quality_mod
 from .audit import AuditLog
 from .escalation import ConfirmationGate, tier_for
 from .fraudsignal import FakeFraudFeed
-from .sop_rag import SopIndex, answer as rag_answer, load_chunks
+from .sop_rag import SopIndex, load_chunks
+from .sop_rag import answer as rag_answer
 from .telemetry import build_db
-from .text2sql import EscalationNeeded, answer as t2s_answer
+from .text2sql import EscalationNeeded
+from .text2sql import answer as t2s_answer
 from .views import install_views
 
 
