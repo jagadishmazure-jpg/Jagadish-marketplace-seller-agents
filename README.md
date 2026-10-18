@@ -8,7 +8,7 @@ data: a listing-quality scorer that turns decay into coachable per-signal
 feedback, an ordered and cited dispute-triage engine, text-to-SQL over
 read-only views, SOP-grounded RAG, a fraud-risk feed with honest gap
 behavior, and human confirmation gates on suspensions and high-value
-refunds. Proof: **74 tests green**, deterministic, stdlib-only.
+refunds. Proof: **90 tests green**, deterministic, stdlib-only.
 
 ## Purpose
 Built for marketplace trust-and-safety and seller-ops teams evaluating how
@@ -63,7 +63,7 @@ print(d.action, d.cited())
 
 ## How to run
 ```bash
-python -m pytest tests/ -q        # 74 tests, stdlib only
+python -m pytest tests/ -q        # 90 tests, stdlib only
 python scripts/count_tests.py     # prints the real count
 pip install streamlit             # optional, demo only
 streamlit run demo/app.py
@@ -110,7 +110,7 @@ governance, not a detector.
 
 Reviewed against the portfolio standard after the build. Bugs found and fixed, each now pinned by a test:
 
-1. **Gateway had no view allowlist.** It blocked writes, but `SELECT * FROM sellers`, a comma join, `"sqlite_master"` and `FROM/**/sellers` all read base tables or the schema, and any caller-written LIMIT skipped the 100-row cap (8,000 rows from a view self-join). The only allowlist check was a regex over names starting with `v_`. A SQLite authorizer (`sellerops/authz.py`, ADR 0001) now refuses any read that is not a published view (`SEC-SELECT-03`); rows past 100 are never fetched.
+1. **Gateway had no view allowlist.** It blocked writes, but `SELECT * FROM sellers`, a comma join, `"sqlite_master"` and `FROM/**/sellers` all read base tables or the schema, and any caller-written LIMIT skipped the 100-row cap (8,000 rows from a view self-join). The only allowlist check was a regex over names starting with `v_`. A SQLite authorizer (`sellerops/authz.py`, ADR 0001) now refuses any read that is not a published view (`SEC-SELECT-03`); rows past 100 are never fetched. Synced to the shared template v3 on 2026-10-18: `load_extension` is denied explicitly and `sqlite_master` stays denied even if listed as allowed (`tests/test_authorizer_sync.py`).
 2. **One intent bypassed the gateway entirely.** `policy_violations` read the `violations` base table with `conn.execute`, a documented carve-out that contradicted "read-only views only". It now reads a new `v_policy_violations` view through the gateway.
 3. **The documented retry did not exist.** The module said "one simplified retry on gateway or DB errors", but a failing template escalated immediately. A failing query now retries once as `SELECT * FROM <view> LIMIT 20` before escalating (tested).
 4. **Prohibited phrases scored excellent.** `PROHIBITED_PHRASES` was defined but never checked, so "Cheapest enamel plates - best deal, buy now" scored 100/excellent; SOP-01 says such claims are "scored zero on compliance". They now zero compliance (80, good). ALL CAPS titles, also named in SOP-01, now lose title points.
@@ -138,7 +138,7 @@ Test count (also checked by CI):
 
 <!-- run: python scripts/count_tests.py -->
 ```text
-74 tests collected
+90 tests collected
 ```
 <!-- /run -->
 
