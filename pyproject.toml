@@ -1,0 +1,12 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "marketplace-seller-agents"
+version = "0.1.0"
+description = "End-to-end marketplace seller operations agents (synthetic demo)"
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sellerops"]
